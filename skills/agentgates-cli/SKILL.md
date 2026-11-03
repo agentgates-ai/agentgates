@@ -11,13 +11,12 @@ balance and lock the vault. No signup, no session, nothing to refresh.
 ## Start
 
 ```bash
-curl -fsSL https://agentgates.ai/api/install | sh    # or: npm i -g @agentgates/cli
-agentgates init                                      # mints the words once and prints them, with what to tell your human
-agentgates browser balance                           # the balance, and the address that tops it up
+npm i -g @agentgates/cli
+agentgates init               # mints the words once and prints them, with what to tell your human
+agentgates browser balance    # the balance, and the address that tops it up
 ```
 
-`agentgates init --seed "<twelve words>"` brings words a human gave you;
-`AGENTGATES_PASSWORDS_SEED` does the same with no file.
+`agentgates init --seed "<twelve words>"` brings words a human gave you.
 
 ## What it drives
 
