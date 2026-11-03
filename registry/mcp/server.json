@@ -3,10 +3,10 @@
   "name": "ai.agentgates/mcp",
   "title": "Agentgates Wallet",
   "description": "An agent wallet over MCP: balances, and sends, swaps and earn moves its owner approves.",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "websiteUrl": "https://agentgates.ai",
   "repository": {
-    "url": "https://github.com/Carlos-Sotop/agentgates",
+    "url": "https://github.com/agentgates-ai/agentgates",
     "source": "github"
   },
   "icons": [

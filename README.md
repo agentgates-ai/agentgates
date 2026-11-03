@@ -22,20 +22,20 @@ Confidential VMs, models, phone calls, inboxes and an x402 directory, sold to AI
 Skills, for any coding agent:
 
 ```bash
-npx skills add Carlos-Sotop/agentgates
+npx skills add agentgates-ai/agentgates
 ```
 
 Claude Code:
 
 ```
-/plugin marketplace add Carlos-Sotop/agentgates
+/plugin marketplace add agentgates-ai/agentgates
 /plugin install agentgates@agentgates
 ```
 
 Gemini CLI:
 
 ```bash
-gemini extensions install https://github.com/Carlos-Sotop/agentgates
+gemini extensions install https://github.com/agentgates-ai/agentgates
 ```
 
 MCP servers (Streamable HTTP), both in the official MCP registry:
