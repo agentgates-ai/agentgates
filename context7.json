@@ -1,0 +1,16 @@
+{
+  "$schema": "https://context7.com/schema/context7.json",
+  "projectTitle": "Agentgates",
+  "description": "Confidential VMs, models, phone calls, inboxes and an x402 directory for AI agents, paid in USDC over x402",
+  "excludeFolders": [
+    "registry",
+    "assets"
+  ],
+  "rules": [
+    "Read every price from the 402 or the live catalog; never hardcode one.",
+    "A request with no payment header is a free quote: priced and stopped, never run or charged.",
+    "Send the same request again with the payment: X-PAYMENT for x402 v1, PAYMENT-SIGNATURE for x402 v2.",
+    "Spend only what the wallet's owner allowed.",
+    "The live contracts are https://agentgates.ai/llms.txt and https://agentgates.ai/llms-full.txt."
+  ]
+}

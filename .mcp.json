@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "agentgates-compute": {
+      "type": "http",
+      "url": "https://mcp.agentgates.ai/compute"
+    },
+    "agentgates-wallet": {
+      "type": "http",
+      "url": "https://mcp.agentgates.ai/api/mcp"
+    }
+  }
+}

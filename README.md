@@ -1,47 +1,99 @@
+<p align="center"><img src="assets/icon.png" width="96" alt="Agentgates"></p>
+
 # Agentgates
 
-**Compute and inference for AI agents, paid in USDC over x402. No signup, no API key — the paying wallet is the account.**
+Confidential VMs, models, phone calls, inboxes and an x402 directory, sold to AI agents for USDC over [x402](https://x402.org). No signup and no API key: the wallet that pays is the account.
 
-Two things are for sale at [agentgates.ai](https://agentgates.ai), both to software, both over plain HTTP:
+[agentgates.ai](https://agentgates.ai) | [Prices, read live](https://agentgates.ai/pricing) | [llms.txt](https://agentgates.ai/llms.txt)
 
-- **Compute** — a dedicated confidential VM (Intel TDX) by the hour, running your Docker workload, with a remote-attestation quote and a public proof page. [Agent docs](https://agentgates.ai/api/compute/docs) · [catalog (JSON)](https://agentgates.ai/api/compute/catalog)
-- **Inference** — open models on attested GPUs, one request one payment, price known before the model runs. [Agent docs](https://agentgates.ai/api/inference/docs) · [catalog (JSON)](https://agentgates.ai/api/inference/catalog)
+## What agents can buy
 
-## How to pay (the x402 loop)
+| Product | What it is | Contract |
+| --- | --- | --- |
+| Compute | A dedicated confidential VM (Intel TDX) by the hour, running your Docker image or compose file, with a remote-attestation quote | [docs](https://api.agentgates.ai/api/compute/docs), [catalog](https://api.agentgates.ai/api/compute/catalog) |
+| Inference | Models in the standard chat format, paid by the request: confidential models in attested hardware, and a cheaper open tier without attestation | [docs](https://api.agentgates.ai/api/inference/docs), [catalog](https://api.agentgates.ai/api/inference/catalog) |
+| Phone | The payphone: one real call with no account, in your own voice over a websocket or with our operator. Or a number of your own | [docs](https://api.agentgates.ai/api/account/docs/phone) |
+| Voice | Our AI operator makes the call and answers with the transcript and the outcome | [docs](https://api.agentgates.ai/api/account/docs/voice) |
+| Email | Inboxes for agents: receive mail and sign-up codes, and send | [docs](https://api.agentgates.ai/api/account/docs/email) |
+| x402 directory | Find, review and list x402 services | [docs](https://api.agentgates.ai/api/directory/docs) |
 
-1. Send the request with no `X-PAYMENT` header.
-2. The answer is HTTP `402` with an `accepts` array — one entry per network, each carrying the exact `maxAmountRequired` in USDC atomic units, the `asset` contract and the `payTo` address.
-3. Sign that entry's amount as an EIP-3009 transfer authorization.
-4. Send the SAME request again with the signature in `X-PAYMENT`. The answer carries the work and the settlement.
+## Install
 
-Quoting is free and repeatable: a request with no payment header is priced and stopped, never fulfilled and never charged.
+Skills, for any coding agent:
 
-## MCP server
+```bash
+npx skills add Carlos-Sotop/agentgates
+```
 
-`https://agentgates.ai/mcp` — Streamable HTTP, OAuth 2.0 (PKCE + dynamic client registration). Pair an Agentgates wallet under owner-approved grants: read balances, propose sends, swaps and earn moves. Every money-moving action is propose-only; the wallet owner approves.
+Claude Code:
 
-Listed on the official MCP registry as **`ai.agentgates/mcp`**.
+```
+/plugin marketplace add Carlos-Sotop/agentgates
+/plugin install agentgates@agentgates
+```
 
-## Machine surfaces
+Gemini CLI:
 
-| Surface | URL |
-| --- | --- |
-| Machine index | [/llms.txt](https://agentgates.ai/llms.txt) |
-| Full contract, one file | [/llms-full.txt](https://agentgates.ai/llms-full.txt) |
-| OpenAPI 3.1 | [/openapi.json](https://agentgates.ai/openapi.json) |
-| Auth (anonymous / bearer / OAuth) | [/auth.md](https://agentgates.ai/auth.md) |
-| MCP server card | [/.well-known/mcp.json](https://agentgates.ai/.well-known/mcp.json) |
-| A2A agent card | [/.well-known/agent-card.json](https://agentgates.ai/.well-known/agent-card.json) |
-| API catalog (RFC 9727) | [/.well-known/api-catalog](https://agentgates.ai/.well-known/api-catalog) |
-| ARD capability manifest | [/.well-known/ai-catalog.json](https://agentgates.ai/.well-known/ai-catalog.json) |
-| Agent skills | [/.well-known/agent-skills/index.json](https://agentgates.ai/.well-known/agent-skills/index.json) |
-| Guides | [/docs](https://agentgates.ai/docs) |
+```bash
+gemini extensions install https://github.com/Carlos-Sotop/agentgates
+```
 
-## CLI
+MCP servers (Streamable HTTP), both in the official MCP registry:
+
+| Server | URL | Sign-in | Registry name |
+| --- | --- | --- | --- |
+| Compute | `https://mcp.agentgates.ai/compute` | None: plans, quotes and docs | `ai.agentgates/compute` |
+| Wallet | `https://mcp.agentgates.ai/api/mcp` | OAuth. Every money move is a proposal its owner approves | `ai.agentgates/mcp` |
+
+CLI:
 
 ```bash
 npm i -g @agentgates/cli
-agentgates --help
+agentgates init
 ```
 
-Prices are never in these documents — money is a read. Every number comes from the live catalogs, and every `402` quotes the exact amount for your exact request.
+## How paying works
+
+1. Send the request with no payment header. The answer is a `402` naming the exact USDC amount on each network it accepts. Asking is free: nothing runs and nothing is charged.
+2. Sign that amount with the paying wallet.
+3. Send the same request again with the payment in `X-PAYMENT` (x402 v1) or `PAYMENT-SIGNATURE` (x402 v2, on compute today).
+
+Or prepay a balance once and spend it request by request, signed by the wallet or with a bearer key.
+
+Prices move with gas and with the providers, so they live in the `402` and the catalogs, never in this repo.
+
+## Examples
+
+- [`examples/quote-a-vm.sh`](examples/quote-a-vm.sh): a VM's price on every network, free.
+- [`examples/buy-a-vm.mjs`](examples/buy-a-vm.mjs): rent one for an hour with the official x402 v2 client.
+- [`examples/chat.sh`](examples/chat.sh): ask a confidential model with a bearer key.
+- [`examples/payphone.sh`](examples/payphone.sh): the payphone's windows and the price of one call.
+
+## Machine-readable
+
+| What | URL |
+| --- | --- |
+| Index for agents | [/llms.txt](https://agentgates.ai/llms.txt) |
+| Every contract in one file | [/llms-full.txt](https://agentgates.ai/llms-full.txt) |
+| OpenAPI | [/openapi.json](https://agentgates.ai/openapi.json), [/openapi.yaml](https://agentgates.ai/openapi.yaml) |
+| A2A agent card and JSON-RPC door | [/.well-known/agent-card.json](https://agentgates.ai/.well-known/agent-card.json), `POST https://agentgates.ai/a2a` |
+| Agent skills index | [/.well-known/agent-skills/index.json](https://agentgates.ai/.well-known/agent-skills/index.json) |
+| ARD catalog | [/.well-known/ard.json](https://agentgates.ai/.well-known/ard.json) |
+| API catalog (RFC 9727) | [/.well-known/api-catalog](https://agentgates.ai/.well-known/api-catalog) |
+| MCP server card | [/.well-known/mcp.json](https://agentgates.ai/.well-known/mcp.json) |
+| How agents authenticate | [/auth.md](https://agentgates.ai/auth.md) |
+| Prices | [/pricing](https://agentgates.ai/pricing) |
+
+## Spending
+
+Everything here costs its owner money. An agent should pay only what its owner allowed: ask first, or stay inside a budget the owner set. Every skill in [`skills/`](skills) says so.
+
+## This repo
+
+`skills/` holds the same `SKILL.md` files [agentgates.ai serves](https://agentgates.ai/.well-known/agent-skills/index.json). `.claude-plugin/` and `.mcp.json` make it a Claude Code plugin, `gemini-extension.json` a Gemini CLI extension, and `registry/` holds the MCP registry records. The services themselves run at agentgates.ai.
+
+[Terms](https://agentgates.ai/terms), [Privacy](https://agentgates.ai/terms#privacy), [security.txt](https://agentgates.ai/.well-known/security.txt). Support: support@agentgates.ai.
+
+## License
+
+MIT

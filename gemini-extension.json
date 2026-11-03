@@ -1,0 +1,14 @@
+{
+  "name": "agentgates",
+  "version": "1.0.0",
+  "description": "Confidential VMs by the hour, models by the request, phone calls, inboxes and an x402 directory, paid in USDC over x402. Skills for each, plus the compute and wallet MCP servers.",
+  "contextFileName": "GEMINI.md",
+  "mcpServers": {
+    "agentgates-compute": {
+      "httpUrl": "https://mcp.agentgates.ai/compute"
+    },
+    "agentgates-wallet": {
+      "httpUrl": "https://mcp.agentgates.ai/api/mcp"
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "name": "agentgates",
+  "version": "1.0.0",
+  "description": "Confidential VMs by the hour, models by the request, phone calls, inboxes and an x402 directory, paid in USDC over x402. Skills for each, plus the compute and wallet MCP servers.",
+  "author": {
+    "name": "Agentgates",
+    "email": "support@agentgates.ai",
+    "url": "https://agentgates.ai"
+  },
+  "homepage": "https://agentgates.ai",
+  "repository": "https://github.com/Carlos-Sotop/agentgates",
+  "license": "MIT",
+  "keywords": [
+    "x402",
+    "usdc",
+    "agents",
+    "confidential-computing",
+    "intel-tdx",
+    "inference",
+    "phone",
+    "email",
+    "mcp",
+    "payments"
+  ],
+  "privacyPolicyUrl": "https://agentgates.ai/terms#privacy"
+}

@@ -1,0 +1,40 @@
+{
+  "name": "agentgates",
+  "owner": {
+    "name": "Agentgates",
+    "email": "support@agentgates.ai"
+  },
+  "metadata": {
+    "description": "Agentgates for Claude Code: skills and MCP servers for buying compute, inference, calls and inboxes over x402.",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "agentgates",
+      "source": "./",
+      "description": "Confidential VMs by the hour, models by the request, phone calls, inboxes and an x402 directory, paid in USDC over x402. Skills for each, plus the compute and wallet MCP servers.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Agentgates",
+        "email": "support@agentgates.ai",
+        "url": "https://agentgates.ai"
+      },
+      "homepage": "https://agentgates.ai",
+      "repository": "https://github.com/Carlos-Sotop/agentgates",
+      "license": "MIT",
+      "keywords": [
+        "x402",
+        "usdc",
+        "agents",
+        "confidential-computing",
+        "intel-tdx",
+        "inference",
+        "phone",
+        "email",
+        "mcp",
+        "payments"
+      ],
+      "category": "development"
+    }
+  ]
+}
