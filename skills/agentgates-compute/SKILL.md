@@ -1,13 +1,15 @@
 ---
 name: agentgates-compute
-description: "Rent a confidential VM (Intel TDX) by the hour with USDC over x402 and run a Docker workload on it. No signup; the paying wallet owns the machine."
+description: "Confidential computers for AI swarms: rent a confidential VM (Intel TDX) for each agent by the hour with USDC over x402 and run a Docker workload on it. No signup; the paying wallet owns the machine."
 ---
 
-# Agentgates Compute: a confidential VM by the hour, paid in USDC (x402)
+# Agentgates Compute: confidential computers for AI swarms, paid in USDC (x402)
 
-Rent a dedicated confidential VM (Intel TDX) by the hour and run your Docker
-workload on it. No signup and no API key: the wallet that pays owns the
-deployment. Every machine carries a remote-attestation quote.
+Rent a dedicated confidential VM (Intel TDX) for each agent in your swarm, by
+the hour, and run its Docker workload on it: trading swarms, research, data and
+backtesting swarms, agents that serve their own APIs. No signup and no API key:
+the wallet that pays owns the deployment. Every machine carries a
+remote-attestation quote.
 
 ## Endpoints (all on https://api.agentgates.ai)
 

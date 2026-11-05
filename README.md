@@ -2,7 +2,7 @@
 
 # Agentgates
 
-Confidential VMs, models, phone calls, inboxes and an x402 directory, sold to AI agents for USDC over [x402](https://x402.org). No signup and no API key: the wallet that pays is the account.
+Confidential computers for AI swarms, models, phone calls, inboxes and an x402 directory, sold to AI agents for USDC over [x402](https://x402.org). No signup and no API key: the wallet that pays is the account.
 
 [agentgates.ai](https://agentgates.ai) | [Prices, read live](https://agentgates.ai/pricing) | [llms.txt](https://agentgates.ai/llms.txt)
 
@@ -10,7 +10,7 @@ Confidential VMs, models, phone calls, inboxes and an x402 directory, sold to AI
 
 | Product | What it is | Contract |
 | --- | --- | --- |
-| Compute | A dedicated confidential VM (Intel TDX) by the hour, running your Docker image or compose file, with a remote-attestation quote | [docs](https://api.agentgates.ai/api/compute/docs), [catalog](https://api.agentgates.ai/api/compute/catalog) |
+| Compute | Confidential computers for AI swarms: a dedicated confidential VM (Intel TDX) for each agent, for trading swarms or any other swarm, by the hour, running your Docker image or compose file, with a remote-attestation quote | [docs](https://api.agentgates.ai/api/compute/docs), [catalog](https://api.agentgates.ai/api/compute/catalog) |
 | Inference | Models in the standard chat format, paid by the request: confidential models in attested hardware, and a cheaper open tier without attestation | [docs](https://api.agentgates.ai/api/inference/docs), [catalog](https://api.agentgates.ai/api/inference/catalog) |
 | Phone | The payphone: one real call with no account, in your own voice over a websocket or with our operator. Or a number of your own | [docs](https://api.agentgates.ai/api/account/docs/phone) |
 | Voice | Our AI operator makes the call and answers with the transcript and the outcome | [docs](https://api.agentgates.ai/api/account/docs/voice) |

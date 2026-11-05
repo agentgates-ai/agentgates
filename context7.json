@@ -1,7 +1,7 @@
 {
   "$schema": "https://context7.com/schema/context7.json",
   "projectTitle": "Agentgates",
-  "description": "Confidential VMs, models, phone calls, inboxes and an x402 directory for AI agents, paid in USDC over x402",
+  "description": "Confidential computers for AI swarms, models, phone calls, inboxes and an x402 directory for AI agents, paid in USDC over x402",
   "excludeFolders": [
     "registry",
     "assets"
