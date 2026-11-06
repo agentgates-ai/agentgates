@@ -30,8 +30,9 @@ agents that keep their keys and strategies sealed from the host, research or
 data workers, or any agent that should run apart from you.
 
 The new agent runs OpenClaw's own release image (`compose.yml` in this skill,
-pinned by digest). Its model is Agentgates inference in the standard chat
-format, default `glm-5-3-flash`, a confidential model in attested hardware.
+pinned by digest; OpenClaw is https://github.com/openclaw/openclaw). Its model
+is Agentgates inference in the standard chat format, default `glm-5-3-flash`,
+a confidential model in attested hardware.
 
 ## What your owner sets up once
 
@@ -59,12 +60,14 @@ is short or the price is over `--max-usd`, then buys the machine (default
 from `GET https://api.agentgates.ai/api/inference/catalog`). It makes a fresh
 gateway token, seals it into the machine with the inference key, keeps it in
 `~/.agentgates/openclaw-machines.json` (readable by you only) and waits until
-the new OpenClaw answers, usually 3 to 6 minutes. The machine's clock starts
+the new OpenClaw answers, about 3 minutes after the purchase (we measured
+2 minutes 28 seconds and 2 minutes 42 seconds). The machine's clock starts
 when it runs.
 
 `compute.standard` (2 vCPU, 4 GB) is the smallest plan OpenClaw runs well on.
 Measured with OpenClaw 2026.11.1: on 1 vCPU it gave no answer in 5 minutes,
 and given room its memory peaked at 2.07 GB, more than a 2 GB machine holds.
+On a Standard machine with `glm-5-3-flash` its answers took 8 to 58 seconds.
 
 `compose.yml` reads `OPENCLAW_GATEWAY_TOKEN`, `AGENTGATES_API_KEY` and
 `AGENTGATES_MODEL` from the new machine's sealed env, which `start` fills. Your
@@ -73,7 +76,7 @@ own environment needs only the two keys above.
 ## Give it work
 
 ```bash
-node {baseDir}/scripts/openclaw-machine.mjs ask worker-1 "Summarize today's BTC funding rates and keep notes"
+node {baseDir}/scripts/openclaw-machine.mjs ask worker-1 "Write a pre-trade checklist for a BTC perpetuals strategy and keep it in your notes"
 node {baseDir}/scripts/openclaw-machine.mjs list
 node {baseDir}/scripts/openclaw-machine.mjs renew worker-1 --hours 1 --max-usd 1
 ```
@@ -81,6 +84,11 @@ node {baseDir}/scripts/openclaw-machine.mjs renew worker-1 --hours 1 --max-usd 1
 `ask` posts to the machine's own `POST /v1/chat/completions` (model
 `openclaw`) with its token; `--session <id>` keeps a conversation apart.
 Anyone holding that token is the machine's operator: never share it.
+
+A new OpenClaw's first answer may end by asking what to call it. That is its
+first-run greeting: name it in your next message or go on with the work. Its
+sessions live on the machine's disk, so after a restart the same `--session`
+carries on where it was.
 
 A machine stops when its paid time ends and its disk is kept a while after
 (`GET https://api.agentgates.ai/api/compute/docs`, "Lifecycle"). Renew before
@@ -90,12 +98,19 @@ wallet can.
 ## Paying with x402 instead
 
 If your agent pays its own way over x402 and your owner set a per-payment cap,
-`node {baseDir}/scripts/openclaw-machine.mjs body --name worker-2` prints the
-create body (this compose, a fresh token, the inference key) and saves the
-token. POST that body to `https://api.agentgates.ai/api/compute/deployments`
-with your x402 client: the `402` names the exact price on each network, and
-asking it is free. Then run `attach worker-2 <deploymentId>`. Any wallet may pay
-a renewal (`POST /api/compute/deployments/{id}/renew`) over x402 the same way.
+`node {baseDir}/scripts/openclaw-machine.mjs body --name worker-2 --minutes 15`
+prints the create body (this compose, a fresh token, the inference key) and
+saves the token. The body holds both secrets: send it only to
+`https://api.agentgates.ai/api/compute/deployments`, with your x402 client. The
+`402` names the exact price on each network, and asking it is free. Then run
+`attach worker-2 <deploymentId>` and `list` until it shows `running`.
+
+A machine belongs to the wallet that paid for it. `list` finds it when that
+wallet is your owner's, the one behind your compute key. If another wallet
+paid, read the machine with that wallet (`GET /api/compute/deployments/{id}`
+signed with `X-Wallet-Auth`, in the compute docs) and pass its endpoint:
+`attach worker-2 <deploymentId> <endpoint>`. Any wallet may pay a renewal
+(`POST /api/compute/deployments/{id}/renew`) over x402 the same way.
 
 ## If a machine never answers
 
@@ -110,7 +125,9 @@ start another machine.
 This skill spends your owner's money, and only from the two prepaid balances
 behind the keys they gave you. Each machine is drawn from the compute balance
 at the price `start` prints first; every model call a machine makes is drawn
-from the inference balance. Neither key can spend more than its balance holds,
-and your owner can revoke either at once. Start or renew a machine only when
-your owner asked you to or set a budget for it, and pass `--max-usd` with that
-budget. Asking the price is free and never charges.
+from the inference balance. The template starts OpenClaw with no scheduled
+jobs: a machine calls its model only when you ask it something, or on a
+schedule you asked it to keep. Neither key can spend more than its balance
+holds, and your owner can revoke either at once. Start or renew a machine only
+when your owner asked you to or set a budget for it, and pass `--max-usd` with
+that budget. Asking the price is free and never charges.

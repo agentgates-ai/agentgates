@@ -10,6 +10,7 @@
 //   node openclaw-machine.mjs ask <name> <message...> [--session <id>]
 //   node openclaw-machine.mjs renew <name> [--hours 1 | --minutes 30] [--max-usd 1]
 //   node openclaw-machine.mjs body [--name ...] [--plan ...] [--hours 1] [--model ...]   (for an x402 client)
+//   node openclaw-machine.mjs attach <name> <deploymentId> [endpoint]                 (after that x402 create)
 //
 // Keys (environment):
 //   AGENTGATES_COMPUTE_KEY    agc_... on a prepaid compute balance: rents and renews machines, nothing else
@@ -100,10 +101,30 @@ function readState() {
 
 function writeState(state) {
   mkdirSync(dirname(STATE), { recursive: true, mode: 0o700 });
-  const tmp = STATE + '.tmp';
+  const tmp = STATE + '.' + process.pid + '.tmp';
   writeFileSync(tmp, JSON.stringify(state, null, 2) + '\n', { mode: 0o600 });
   renameSync(tmp, STATE);
   chmodSync(STATE, 0o600);
+}
+
+// Each save reads the file again, so runs side by side keep each other's machines.
+function saveMachine(fields) {
+  const state = readState();
+  const m = state.machines.find((x) => x.name === fields.name);
+  if (m) Object.assign(m, fields); else state.machines.push(fields);
+  writeState(state);
+}
+
+function dropMachine(name) {
+  const state = readState();
+  state.machines = state.machines.filter((m) => m.name !== name);
+  writeState(state);
+}
+
+function freeName() {
+  const name = String(flags.name || 'openclaw-' + randomBytes(3).toString('hex'));
+  if (readState().machines.some((m) => m.name === name)) fail('a machine named "' + name + '" is already in ' + STATE);
+  return name;
 }
 
 function findMachine(state, ref) {
@@ -202,23 +223,26 @@ async function main() {
   }
 
   if (command === 'body') {
-    const state = readState();
-    const name = String(flags.name || 'openclaw-' + randomBytes(3).toString('hex'));
+    const name = freeName();
     const body = createBody(name, timeAsked());
-    state.machines.push({ name, deploymentId: null, plan: PLAN, model: MODEL, token: body.env.OPENCLAW_GATEWAY_TOKEN, createdAt: new Date().toISOString(), paidWith: 'x402' });
-    writeState(state);
+    saveMachine({ name, deploymentId: null, plan: PLAN, model: MODEL, token: body.env.OPENCLAW_GATEWAY_TOKEN, createdAt: new Date().toISOString(), paidWith: 'x402' });
     process.stdout.write(JSON.stringify(body) + '\n');
     console.error('POST this body to ' + API + '/api/compute/deployments with your x402 client; then run: attach ' + name + ' <deploymentId>');
     return;
   }
 
   if (command === 'attach') {
-    const state = readState();
-    const m = findMachine(state, rest[0]);
+    const m = findMachine(readState(), rest[0]);
     if (!rest[1]) fail('give the deploymentId the create answered');
-    m.deploymentId = rest[1];
-    writeState(state);
-    console.log('saved ' + m.name + ' as ' + m.deploymentId);
+    const fields = { name: m.name, deploymentId: rest[1] };
+    // A machine another wallet paid for is not under your compute key: pass the
+    // endpoint that wallet's own read of it answered.
+    if (rest[2]) {
+      if (!rest[2].startsWith('https://')) fail('the endpoint starts with https://');
+      fields.endpoint = rest[2];
+    }
+    saveMachine(fields);
+    console.log('saved ' + m.name + ' as ' + fields.deploymentId + (fields.endpoint ? ' at ' + fields.endpoint : ''));
     return;
   }
 
@@ -226,35 +250,30 @@ async function main() {
     const key = computeKey();
     inferenceKey();
     const time = timeAsked();
-    const name = String(flags.name || 'openclaw-' + randomBytes(3).toString('hex'));
-    const state = readState();
-    if (state.machines.some((m) => m.name === name)) fail('a machine named "' + name + '" is already in ' + STATE);
+    const name = freeName();
     const { usd, estimate } = await livePrice(PLAN, time);
     const available = await balanceOf('/api/compute/credits', key);
     console.log(PLAN + ': ' + (estimate ? 'about ' : '') + '$' + usd.toFixed(3) + ', compute balance $' + (available ?? 0).toFixed(3));
     guard(usd, available);
     const body = createBody(name, time);
     const record = { name, deploymentId: null, plan: PLAN, model: MODEL, token: body.env.OPENCLAW_GATEWAY_TOKEN, createdAt: new Date().toISOString(), paidWith: 'balance' };
-    state.machines.push(record);
-    writeState(state);
+    saveMachine(record);
     const made = await call('POST', '/api/compute/deployments', { key, body, timeoutMs: 120_000 });
     if (made.status === 402) {
-      state.machines = state.machines.filter((m) => m !== record);
-      writeState(state);
+      dropMachine(name);
       fail('the balance did not cover it (402); nothing was bought');
     }
     if (made.status !== 202 && made.status !== 200) {
-      state.machines = state.machines.filter((m) => m !== record);
-      writeState(state);
+      dropMachine(name);
       fail('the create answered ' + made.status + ': ' + (made.json?.error || made.text).toString().slice(0, 300));
     }
     record.deploymentId = made.json.deploymentId;
     record.chargedUsd = made.json.charged?.amountMicro ? Number(made.json.charged.amountMicro) / 1e6 : null;
-    writeState(state);
+    saveMachine(record);
     console.log('bought ' + name + ' (' + record.deploymentId + ')' + (record.chargedUsd !== null ? ' for $' + record.chargedUsd.toFixed(3) : ''));
     if (flags['no-wait']) return;
     const ok = await waitReady(key, record);
-    writeState(state);
+    saveMachine(record);
     if (!ok) fail('not ready yet; run "list" later. If it never answers, its sealed env may be missing: see SKILL.md, "If a machine never answers"');
     console.log('ready: ' + record.endpoint + ' (until ' + record.expiresAt + ')');
     console.log('ask it: node ' + join(HERE, 'openclaw-machine.mjs') + ' ask ' + name + ' "your task"');
@@ -269,10 +288,12 @@ async function main() {
     for (const m of state.machines) {
       // A create whose answer was lost: the machine carries the name it was bought with.
       const row = rows.find((d) => d.deploymentId === m.deploymentId) || (!m.deploymentId ? rows.find((d) => d.name === m.name) : undefined);
-      if (row) { m.deploymentId = row.deploymentId; m.endpoint = row.endpoint || m.endpoint; m.expiresAt = row.expiresAt; }
+      if (row) {
+        m.deploymentId = row.deploymentId; m.endpoint = row.endpoint || m.endpoint; m.expiresAt = row.expiresAt;
+        saveMachine({ name: m.name, deploymentId: m.deploymentId, endpoint: m.endpoint, expiresAt: m.expiresAt });
+      }
       console.log([m.name, m.deploymentId || '(not bought yet)', row ? row.status : 'unknown', m.endpoint || '-', 'until ' + (m.expiresAt || '-')].join('  '));
     }
-    if (key) writeState(state);
     return;
   }
 
@@ -310,7 +331,7 @@ async function main() {
     if (r.status === 402) fail('the balance did not cover the renewal (402); nothing was bought');
     if (r.status !== 200 && r.status !== 202) fail('the renewal answered ' + r.status + ': ' + (r.json?.error || r.text).toString().slice(0, 300));
     m.expiresAt = r.json.expiresAt || m.expiresAt;
-    writeState(state);
+    saveMachine({ name: m.name, expiresAt: m.expiresAt });
     console.log('renewed ' + m.name + ' until ' + m.expiresAt);
     return;
   }
