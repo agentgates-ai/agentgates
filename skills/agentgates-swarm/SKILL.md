@@ -54,15 +54,18 @@ node {baseDir}/scripts/openclaw-machine.mjs price
 node {baseDir}/scripts/openclaw-machine.mjs start --name worker-1 --max-usd 1
 ```
 
-`start` reads the live price and your compute balance, refuses if the balance
-is short or the price is over `--max-usd`, then buys the machine (default
+`start` asks the API for the exact price of this purchase (a free `402` quote;
+a draw from the balance costs that or less) and reads your compute balance. It
+refuses when `--max-usd` is missing, the price is over it, or the balance is
+short or cannot be read. Only then does it buy the machine (default
 `compute.standard`, 1 hour; `--hours N` or `--minutes 15|30|45`, `--model <id>`
-from `GET https://api.agentgates.ai/api/inference/catalog`). It makes a fresh
-gateway token, seals it into the machine with the inference key, keeps it in
-`~/.agentgates/openclaw-machines.json` (readable by you only) and waits until
-the new OpenClaw answers, about 3 minutes after the purchase (we measured
-2 minutes 28 seconds and 2 minutes 42 seconds). The machine's clock starts
-when it runs.
+from `GET https://api.agentgates.ai/api/inference/catalog`), and it checks the
+charge against `--max-usd` after, exiting with code 2 if the price moved past
+it. It makes a fresh gateway token, seals it into the machine with the
+inference key, keeps it in `~/.agentgates/openclaw-machines.json` (readable by
+you only) and waits until the new OpenClaw answers, about 3 minutes after the
+purchase (we measured 2 minutes 28 seconds and 2 minutes 42 seconds). The
+machine's clock starts when it runs.
 
 `compute.standard` (2 vCPU, 4 GB) is the smallest plan OpenClaw runs well on.
 Measured with OpenClaw 2026.11.1: on 1 vCPU it gave no answer in 5 minutes,
@@ -83,7 +86,10 @@ node {baseDir}/scripts/openclaw-machine.mjs renew worker-1 --hours 1 --max-usd 1
 
 `ask` posts to the machine's own `POST /v1/chat/completions` (model
 `openclaw`) with its token; `--session <id>` keeps a conversation apart.
-Anyone holding that token is the machine's operator: never share it.
+Anyone holding that token is the machine's operator: never share it. Before
+you send a machine secrets, check its proof page,
+`https://api.agentgates.ai/compute/verify/<deploymentId>`: its compose hash, OS
+image hash and Intel TDX quote.
 
 A new OpenClaw's first answer may end by asking what to call it. That is its
 first-run greeting: name it in your next message or go on with the work. Its
@@ -100,10 +106,12 @@ wallet can.
 If your agent pays its own way over x402 and your owner set a per-payment cap,
 `node {baseDir}/scripts/openclaw-machine.mjs body --name worker-2 --minutes 15`
 prints the create body (this compose, a fresh token, the inference key) and
-saves the token. The body holds both secrets: send it only to
-`https://api.agentgates.ai/api/compute/deployments`, with your x402 client. The
-`402` names the exact price on each network, and asking it is free. Then run
-`attach worker-2 <deploymentId>` and `list` until it shows `running`.
+saves the token. The body holds both secrets: keep it out of logs and send it
+only to `https://api.agentgates.ai/api/compute/deployments`, with your x402
+client. The `402` names the exact price on each network, asking it is free, and
+your client signs that exact amount, so keep its per-payment cap at your
+owner's budget. Then run `attach worker-2 <deploymentId>` and `list` until it
+shows `running`.
 
 A machine belongs to the wallet that paid for it. `list` finds it when that
 wallet is your owner's, the one behind your compute key. If another wallet
@@ -123,11 +131,16 @@ start another machine.
 ## Spending
 
 This skill spends your owner's money, and only from the two prepaid balances
-behind the keys they gave you. Each machine is drawn from the compute balance
-at the price `start` prints first; every model call a machine makes is drawn
-from the inference balance. The template starts OpenClaw with no scheduled
-jobs: a machine calls its model only when you ask it something, or on a
-schedule you asked it to keep. Neither key can spend more than its balance
-holds, and your owner can revoke either at once. Start or renew a machine only
-when your owner asked you to or set a budget for it, and pass `--max-usd` with
-that budget. Asking the price is free and never charges.
+behind the keys they gave you. The balances are the hard limits: the API
+refuses any purchase or model call its balance cannot cover, and your owner can
+revoke either key at once. Each machine is drawn from the compute balance;
+every model call a machine makes is drawn from the inference balance. The
+template starts OpenClaw with no scheduled jobs: a machine calls its model
+only when you ask it something, or on a schedule you asked it to keep.
+
+`start` and `renew` require `--max-usd`, the most your owner lets one purchase
+cost. The API takes no cap of its own, so this script checks it against the
+API's quote just before buying and against the charge right after. Start or
+renew a machine only when your owner asked you to or set a budget for it.
+Asking the price is free and never charges. Ask your owner to keep on each
+balance only what your agents may spend.

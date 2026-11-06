@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 // Start, list, ask and renew OpenClaw agents on Agentgates confidential computers.
 // No dependencies (Node 18 or newer). It spends only the prepaid balances behind
-// the two keys its owner gave it, prints the price and the balance before every
-// purchase, and refuses when the balance is short or the price is over --max-usd.
+// the two keys its owner gave it. Before every purchase it asks the API for that
+// purchase's exact price, and it refuses when --max-usd is missing, the price is
+// over it, or the balance is short or unreadable.
 //
 //   node openclaw-machine.mjs price [--plan compute.standard] [--hours 1 | --minutes 30]
-//   node openclaw-machine.mjs start [--name worker-1] [--plan ...] [--hours 1] [--model glm-5-3-flash] [--max-usd 1]
+//   node openclaw-machine.mjs start --max-usd 1 [--name worker-1] [--plan ...] [--hours 1] [--model glm-5-3-flash]
 //   node openclaw-machine.mjs list
 //   node openclaw-machine.mjs ask <name> <message...> [--session <id>]
-//   node openclaw-machine.mjs renew <name> [--hours 1 | --minutes 30] [--max-usd 1]
+//   node openclaw-machine.mjs renew <name> --max-usd 1 [--hours 1 | --minutes 30]
 //   node openclaw-machine.mjs body [--name ...] [--plan ...] [--hours 1] [--model ...]   (for an x402 client)
 //   node openclaw-machine.mjs attach <name> <deploymentId> [endpoint]                 (after that x402 create)
 //
@@ -134,56 +135,63 @@ function findMachine(state, ref) {
   return m;
 }
 
-// The catalog's price for this purchase, read now. A balance draw is charged
-// what the create answers; this is the figure to compare with the owner's cap.
-async function livePrice(planId, time) {
-  const { status, json } = await call('GET', '/api/compute/catalog');
-  if (status !== 200 || !json) fail('the catalog did not answer (' + status + ')');
-  const plan = (json.plans || []).find((p) => p.id === planId);
-  if (!plan) fail('no plan "' + planId + '"; plans: ' + (json.plans || []).map((p) => p.id).join(', '));
-  if (time.minutes) {
-    const rung = (plan.minutesPricing || []).find((r) => r.minutesPerPayment === time.minutes);
-    if (!rung || rung.totalUsd == null) fail(planId + ' is not sold by the quarter-hour right now');
-    return { plan, usd: Number(rung.balanceTotalUsd ?? rung.totalUsd) };
-  }
-  const rungs = (plan.pricing || []).filter((r) => r.hoursPerPayment <= time.hours).sort((a, b) => b.hoursPerPayment - a.hoursPerPayment);
-  const rung = rungs[0];
-  if (!rung) fail('no price for ' + time.hours + ' hours on ' + planId);
-  if (rung.hoursPerPayment === time.hours) return { plan, usd: Number(rung.balanceTotalUsd ?? rung.totalUsd) };
-  return { plan, usd: Number(rung.priceUsdPerHour) * time.hours, estimate: true };
+// The API's own price for this exact purchase: asked with no payment and no key,
+// a create or a renewal answers 402 with one entry per network, and asking is
+// free. A balance draw is charged the cheapest entry or less (compute docs).
+async function quote(path, body) {
+  const { status, json } = await call('POST', path, { body });
+  if (status !== 402) fail('asking the price answered ' + status + (json && json.error ? ': ' + json.error : '') + '; nothing was bought');
+  const legs = ((json && json.accepts) || []).map((a) => Number(a.maxAmountRequired) / 1e6).filter((n) => Number.isFinite(n) && n > 0);
+  if (!legs.length) fail('the price answer named no amount; nothing was bought');
+  return Math.min(...legs);
 }
 
-async function balanceOf(path, key) {
-  const { status, json } = await call('GET', path, { key });
-  if (status !== 200 || !json) return null;
-  const c = json.credit || json.balance || json;
-  const v = c && (c.availableUsd ?? c.balanceUsd);
-  return v === undefined || v === null ? 0 : Number(v);
+async function readBalance(key) {
+  const { status, json } = await call('GET', '/api/compute/credits', { key });
+  const c = json && (json.credit || json.balance || json);
+  const v = Number(c && (c.availableUsd ?? c.balanceUsd));
+  return status === 200 && Number.isFinite(v) && v >= 0 ? v : null;
 }
 
-function guard(usd, available) {
-  if (flags['max-usd'] !== undefined) {
-    const cap = Number(flags['max-usd']);
-    if (!(cap > 0)) fail('--max-usd must be a positive number');
-    if (usd > cap) fail('this costs $' + usd.toFixed(3) + ', over --max-usd ' + cap + '; nothing was bought');
+// The owner's limit for one purchase. Required: there is no default budget.
+function budget() {
+  const cap = Number(flags['max-usd']);
+  if (flags['max-usd'] === undefined || flags['max-usd'] === true || !Number.isFinite(cap) || cap <= 0) {
+    fail('pass --max-usd <dollars>, the most your owner lets this purchase cost; nothing was bought');
   }
-  if (available !== null && available < usd) {
+  return cap;
+}
+
+function guard(usd, cap, available) {
+  if (usd > cap) fail('this costs $' + usd.toFixed(3) + ', over --max-usd ' + cap + '; nothing was bought');
+  if (available === null) fail('the compute balance could not be read; nothing was bought');
+  if (available < usd) {
     fail('the compute balance holds $' + available.toFixed(3) + ' and this costs $' + usd.toFixed(3) + '; ask your owner to top it up (POST ' + API + '/api/compute/credits); nothing was bought');
   }
 }
 
-function createBody(name, time) {
-  return {
-    plan: PLAN,
-    ...time,
-    name,
-    compose: readFileSync(COMPOSE_FILE, 'utf8'),
-    env: {
+// The API takes no cap of its own, so the charge is checked after the fact too.
+function checkCharge(chargedUsd, cap) {
+  if (chargedUsd !== null && chargedUsd > cap) {
+    console.error('warning: charged $' + chargedUsd.toFixed(3) + ', over --max-usd ' + cap + ' (the price moved after the quote); tell your owner');
+    process.exitCode = 2;
+  }
+}
+
+function span(time) {
+  return time.hours ? time.hours + ' hour(s)' : time.minutes + ' minutes';
+}
+
+function createBody(name, time, withEnv = true) {
+  const body = { plan: PLAN, ...time, name, compose: readFileSync(COMPOSE_FILE, 'utf8') };
+  if (withEnv) {
+    body.env = {
       OPENCLAW_GATEWAY_TOKEN: randomBytes(32).toString('hex'),
       AGENTGATES_API_KEY: inferenceKey(),
       AGENTGATES_MODEL: MODEL,
-    },
-  };
+    };
+  }
+  return body;
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -214,10 +222,10 @@ async function waitReady(key, machine) {
 async function main() {
   if (command === 'price') {
     const time = timeAsked();
-    const { usd, estimate } = await livePrice(PLAN, time);
+    const usd = await quote('/api/compute/deployments', createBody('price-check', time, false));
     const key = process.env.AGENTGATES_COMPUTE_KEY;
-    const available = key ? await balanceOf('/api/compute/credits', key) : null;
-    console.log(PLAN + ' for ' + (time.hours ? time.hours + ' hour(s)' : time.minutes + ' minutes') + ': ' + (estimate ? 'about ' : '') + '$' + usd.toFixed(3) + ' (read now)');
+    const available = key ? await readBalance(key) : null;
+    console.log(PLAN + ' for ' + span(time) + ': $' + usd.toFixed(3) + ' (quoted now; nothing was bought)');
     if (available !== null) console.log('compute balance available: $' + available.toFixed(3));
     return;
   }
@@ -249,12 +257,13 @@ async function main() {
   if (command === 'start') {
     const key = computeKey();
     inferenceKey();
+    const cap = budget();
     const time = timeAsked();
     const name = freeName();
-    const { usd, estimate } = await livePrice(PLAN, time);
-    const available = await balanceOf('/api/compute/credits', key);
-    console.log(PLAN + ': ' + (estimate ? 'about ' : '') + '$' + usd.toFixed(3) + ', compute balance $' + (available ?? 0).toFixed(3));
-    guard(usd, available);
+    const usd = await quote('/api/compute/deployments', createBody(name, time, false));
+    const available = await readBalance(key);
+    console.log(PLAN + ' for ' + span(time) + ': $' + usd.toFixed(3) + ' quoted now, --max-usd ' + cap + ', compute balance ' + (available === null ? 'unreadable' : '$' + available.toFixed(3)));
+    guard(usd, cap, available);
     const body = createBody(name, time);
     const record = { name, deploymentId: null, plan: PLAN, model: MODEL, token: body.env.OPENCLAW_GATEWAY_TOKEN, createdAt: new Date().toISOString(), paidWith: 'balance' };
     saveMachine(record);
@@ -271,6 +280,7 @@ async function main() {
     record.chargedUsd = made.json.charged?.amountMicro ? Number(made.json.charged.amountMicro) / 1e6 : null;
     saveMachine(record);
     console.log('bought ' + name + ' (' + record.deploymentId + ')' + (record.chargedUsd !== null ? ' for $' + record.chargedUsd.toFixed(3) : ''));
+    checkCharge(record.chargedUsd, cap);
     if (flags['no-wait']) return;
     const ok = await waitReady(key, record);
     saveMachine(record);
@@ -322,21 +332,26 @@ async function main() {
     const state = readState();
     const m = findMachine(state, rest[0]);
     if (!m.deploymentId) fail('this machine was never bought');
+    const cap = budget();
     const time = timeAsked();
-    const { usd, estimate } = await livePrice(m.plan || PLAN, time);
-    const available = await balanceOf('/api/compute/credits', key);
-    console.log('renewal: ' + (estimate ? 'about ' : '') + '$' + usd.toFixed(3) + ' or less, compute balance $' + (available ?? 0).toFixed(3));
-    guard(usd, available);
-    const r = await call('POST', '/api/compute/deployments/' + encodeURIComponent(m.deploymentId) + '/renew', { key, body: time });
+    const path = '/api/compute/deployments/' + encodeURIComponent(m.deploymentId) + '/renew';
+    const usd = await quote(path, time);
+    const available = await readBalance(key);
+    console.log('renewal for ' + span(time) + ': $' + usd.toFixed(3) + ' quoted now, --max-usd ' + cap + ', compute balance ' + (available === null ? 'unreadable' : '$' + available.toFixed(3)));
+    guard(usd, cap, available);
+    const r = await call('POST', path, { key, body: time });
     if (r.status === 402) fail('the balance did not cover the renewal (402); nothing was bought');
     if (r.status !== 200 && r.status !== 202) fail('the renewal answered ' + r.status + ': ' + (r.json?.error || r.text).toString().slice(0, 300));
     m.expiresAt = r.json.expiresAt || m.expiresAt;
     saveMachine({ name: m.name, expiresAt: m.expiresAt });
-    console.log('renewed ' + m.name + ' until ' + m.expiresAt);
+    const charged = r.json.charged && r.json.charged.amountMicro ? Number(r.json.charged.amountMicro) / 1e6 : null;
+    console.log('renewed ' + m.name + ' until ' + m.expiresAt + (charged !== null ? ' for $' + charged.toFixed(3) : ''));
+    checkCharge(charged, cap);
     return;
   }
 
-  console.log(readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').slice(1, 20).map((l) => l.replace(/^\/\/ ?/, '')).join('\n'));
+  const lines = readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').slice(1);
+  console.log(lines.slice(0, lines.findIndex((l) => !l.startsWith('//'))).map((l) => l.replace(/^\/\/ ?/, '')).join('\n'));
   if (command && command !== 'help') process.exit(1);
 }
 
