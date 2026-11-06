@@ -52,6 +52,10 @@ npm i -g @agentgates/cli
 agentgates init
 ```
 
+## OpenClaw on a confidential computer
+
+An OpenClaw agent with [`skills/agentgates-openclaw`](skills/agentgates-openclaw) starts more OpenClaw agents, one confidential computer each, with our inference as their model, paid from two prepaid balances its owner set. Each machine runs [`compose.yml`](skills/agentgates-openclaw/compose.yml): OpenClaw's own image, pinned by digest. From ClawHub: `openclaw skills install @agentgates/agentgates-openclaw`.
+
 ## How paying works
 
 1. Send the request with no payment header. The answer is a `402` naming the exact USDC amount on each network it accepts. Asking is free: nothing runs and nothing is charged.
@@ -90,7 +94,7 @@ Everything here costs its owner money. An agent should pay only what its owner a
 
 ## This repo
 
-`skills/` holds the same `SKILL.md` files [agentgates.ai serves](https://agentgates.ai/.well-known/agent-skills/index.json). `.claude-plugin/` and `.mcp.json` make it a Claude Code plugin, `gemini-extension.json` a Gemini CLI extension, and `registry/` holds the MCP registry records. The services themselves run at agentgates.ai.
+`skills/` holds the same `SKILL.md` files [agentgates.ai serves](https://agentgates.ai/.well-known/agent-skills/index.json), and `agentgates-openclaw`, which carries its compose and a script, so it installs from here or from ClawHub. `.claude-plugin/` and `.mcp.json` make it a Claude Code plugin, `gemini-extension.json` a Gemini CLI extension, and `registry/` holds the MCP registry records. The services themselves run at agentgates.ai.
 
 [Terms](https://agentgates.ai/terms), [Privacy](https://agentgates.ai/terms#privacy), [security.txt](https://agentgates.ai/.well-known/security.txt). Support: support@agentgates.ai.
 
