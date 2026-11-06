@@ -1,5 +1,5 @@
 ---
-name: agentgates-openclaw
+name: agentgates-swarm
 description: "Start another OpenClaw agent on its own confidential computer (a sealed Intel TDX VM), one machine per agent, paid in USDC from a prepaid Agentgates balance. Its default model is Agentgates inference, paid from a second prepaid balance."
 metadata:
   openclaw:
