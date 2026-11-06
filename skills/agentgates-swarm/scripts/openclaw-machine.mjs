@@ -21,7 +21,7 @@
 // in --state (default ~/.agentgates/openclaw-machines.json, readable by you only).
 
 import { randomBytes } from 'node:crypto';
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { chmodSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -97,7 +97,7 @@ async function call(method, path, { key, body, timeoutMs = 60_000 } = {}) {
 
 function readState() {
   if (!existsSync(STATE)) return { machines: [] };
-  try { return JSON.parse(readFileSync(STATE, 'utf8')); } catch { fail('cannot read ' + STATE); }
+  try { return JSON.parse(readFileSync(STATE, 'utf8')); } catch { throw new Error('cannot read ' + STATE); }
 }
 
 function writeState(state) {
@@ -108,18 +108,46 @@ function writeState(state) {
   chmodSync(STATE, 0o600);
 }
 
-// Each save reads the file again, so runs side by side keep each other's machines.
-function saveMachine(fields) {
-  const state = readState();
-  const m = state.machines.find((x) => x.name === fields.name);
-  if (m) Object.assign(m, fields); else state.machines.push(fields);
-  writeState(state);
+// One run at a time changes the state file, under a lock file made with O_EXCL,
+// so runs side by side keep each other's machines and tokens. A lock older than
+// 30 seconds was left by a run that died, and is taken over.
+function locked(fn) {
+  mkdirSync(dirname(STATE), { recursive: true, mode: 0o700 });
+  const lock = STATE + '.lock';
+  const deadline = Date.now() + 15_000;
+  for (;;) {
+    try {
+      closeSync(openSync(lock, 'wx', 0o600));
+      break;
+    } catch (err) {
+      if (err.code !== 'EEXIST') throw err;
+      try { if (Date.now() - statSync(lock).mtimeMs > 30_000) unlinkSync(lock); } catch { /* released meanwhile */ }
+      if (Date.now() > deadline) throw new Error('another run holds ' + lock + '; try again');
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
+    }
+  }
+  try { return fn(); } finally { try { unlinkSync(lock); } catch { /* already gone */ } }
+}
+
+// isNew claims the name: it refuses when another run saved that name first.
+function saveMachine(fields, isNew = false) {
+  const taken = locked(() => {
+    const state = readState();
+    const m = state.machines.find((x) => x.name === fields.name);
+    if (m && isNew) return true;
+    if (m) Object.assign(m, fields); else state.machines.push(fields);
+    writeState(state);
+    return false;
+  });
+  if (taken) fail('a machine named "' + fields.name + '" is already in ' + STATE);
 }
 
 function dropMachine(name) {
-  const state = readState();
-  state.machines = state.machines.filter((m) => m.name !== name);
-  writeState(state);
+  locked(() => {
+    const state = readState();
+    state.machines = state.machines.filter((m) => m.name !== name);
+    writeState(state);
+  });
 }
 
 function freeName() {
@@ -233,7 +261,7 @@ async function main() {
   if (command === 'body') {
     const name = freeName();
     const body = createBody(name, timeAsked());
-    saveMachine({ name, deploymentId: null, plan: PLAN, model: MODEL, token: body.env.OPENCLAW_GATEWAY_TOKEN, createdAt: new Date().toISOString(), paidWith: 'x402' });
+    saveMachine({ name, deploymentId: null, plan: PLAN, model: MODEL, token: body.env.OPENCLAW_GATEWAY_TOKEN, createdAt: new Date().toISOString(), paidWith: 'x402' }, true);
     process.stdout.write(JSON.stringify(body) + '\n');
     console.error('POST this body to ' + API + '/api/compute/deployments with your x402 client; then run: attach ' + name + ' <deploymentId>');
     return;
@@ -266,7 +294,7 @@ async function main() {
     guard(usd, cap, available);
     const body = createBody(name, time);
     const record = { name, deploymentId: null, plan: PLAN, model: MODEL, token: body.env.OPENCLAW_GATEWAY_TOKEN, createdAt: new Date().toISOString(), paidWith: 'balance' };
-    saveMachine(record);
+    saveMachine(record, true);
     const made = await call('POST', '/api/compute/deployments', { key, body, timeoutMs: 120_000 });
     if (made.status === 402) {
       dropMachine(name);

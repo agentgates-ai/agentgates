@@ -86,8 +86,11 @@ node {baseDir}/scripts/openclaw-machine.mjs renew worker-1 --hours 1 --max-usd 1
 
 `ask` posts to the machine's own `POST /v1/chat/completions` (model
 `openclaw`) with its token; `--session <id>` keeps a conversation apart.
-Anyone holding that token is the machine's operator: never share it. Before
-you send a machine secrets, check its proof page,
+Anyone holding that token is the machine's operator: never share it. The state
+file is its only copy, so back it up; if it is lost, your owner can seal a new
+token into the machine with `POST /api/compute/deployments/{id}/update`. Runs
+side by side are safe: each change to the file takes a lock. Before you send a
+machine secrets, check its proof page,
 `https://api.agentgates.ai/compute/verify/<deploymentId>`: its compose hash, OS
 image hash and Intel TDX quote.
 
