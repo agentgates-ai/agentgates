@@ -1,5 +1,7 @@
 #!/usr/bin/env node
-// Start, list, ask and renew OpenClaw agents on Agentgates confidential computers.
+// Start, list, ask and renew OpenClaw agents on Agentgates computers: confidential
+// ones (the default plan) or plain VMs for workers with nothing secret
+// (--plan compute.vm.standard: no proof, its host can read it).
 // No dependencies (Node 18 or newer). It spends only the prepaid balances behind
 // the two keys its owner gave it. Before every purchase it asks the API for that
 // purchase's exact price, and it refuses when --max-usd is missing, the price is
@@ -168,6 +170,8 @@ function findMachine(state, ref) {
 // free. A balance draw is charged the cheapest entry or less (compute docs).
 async function quote(path, body) {
   const { status, json } = await call('POST', path, { body });
+  // A plain plan sells while its host has room; out of room it answers 503.
+  if (status === 503 && json && json.code === 'at_capacity') fail('no ' + PLAN + ' machine is free right now' + (json.error ? ' (' + json.error + ')' : '') + '; try again later or another plan; nothing was bought');
   if (status !== 402) fail('asking the price answered ' + status + (json && json.error ? ': ' + json.error : '') + '; nothing was bought');
   const legs = ((json && json.accepts) || []).map((a) => Number(a.maxAmountRequired) / 1e6).filter((n) => Number.isFinite(n) && n > 0);
   if (!legs.length) fail('the price answer named no amount; nothing was bought');
@@ -218,6 +222,10 @@ function createBody(name, time, withEnv = true) {
       AGENTGATES_API_KEY: inferenceKey(),
       AGENTGATES_MODEL: MODEL,
     };
+    // A plain VM's https name is a proxy inside the machine that reaches the
+    // gateway from Docker's private range; OpenClaw answers a proxied call
+    // only from a proxy it trusts. A confidential plan sends nothing new.
+    if (PLAN.startsWith('compute.vm.')) body.env.OPENCLAW_TRUSTED_PROXIES = '172.16.0.0/12';
   }
   return body;
 }
@@ -234,7 +242,11 @@ async function waitReady(key, machine) {
     if (row) {
       say('machine ' + row.status);
       if (['failed', 'destroyed', 'grace', 'stopped'].includes(row.status)) fail('the machine is ' + row.status + '; see GET ' + API + '/api/compute/deployments');
-      if (row.status === 'running' && row.endpoint) {
+      // A plain VM answers on its address first and on its https name once the
+      // name's certificate is made inside it, about a minute later: wait for it.
+      if (row.status === 'running' && row.endpoint && !row.endpoint.startsWith('https://') && row.aliasHost && row.aliasStatus !== 'live') {
+        say('its https name ' + row.aliasHost + ' is not live yet');
+      } else if (row.status === 'running' && row.endpoint) {
         machine.endpoint = row.endpoint;
         machine.expiresAt = row.expiresAt;
         const up = await fetch(row.endpoint.replace(/\/+$/, '') + '/startupz', { signal: AbortSignal.timeout(10_000) }).then((r) => r.status, () => 0);
@@ -291,6 +303,7 @@ async function main() {
     const usd = await quote('/api/compute/deployments', createBody(name, time, false));
     const available = await readBalance(key);
     console.log(PLAN + ' for ' + span(time) + ': $' + usd.toFixed(3) + ' quoted now, --max-usd ' + cap + ', compute balance ' + (available === null ? 'unreadable' : '$' + available.toFixed(3)));
+    if (PLAN.startsWith('compute.vm.')) console.log('a plain VM: no proof; its host can read its env, the gateway token and the inference key included');
     guard(usd, cap, available);
     const body = createBody(name, time);
     const record = { name, deploymentId: null, plan: PLAN, model: MODEL, token: body.env.OPENCLAW_GATEWAY_TOKEN, createdAt: new Date().toISOString(), paidWith: 'balance' };
@@ -341,6 +354,8 @@ async function main() {
     const message = rest.join(' ').trim();
     if (!message) fail('say what to ask');
     if (!m.endpoint) fail('no endpoint saved yet; run "list"');
+    // The token is the machine's operator key: never sent in the clear.
+    if (!m.endpoint.startsWith('https://')) fail('this machine has no https address yet (' + m.endpoint + '); its token is never sent in the clear: run "list" again in a minute');
     const res = await fetch(m.endpoint.replace(/\/+$/, '') + '/v1/chat/completions', {
       method: 'POST',
       headers: { authorization: 'Bearer ' + m.token, 'content-type': 'application/json' },

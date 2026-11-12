@@ -1,6 +1,6 @@
 ---
 name: agentgates-swarm
-description: "Deploy OpenClaw subagents to their own cloud server: start another OpenClaw agent on a confidential virtual machine (CVM, a sealed Intel TDX VM), one per agent, for trading swarms or any swarm, by the hour, paid in USDC from a prepaid Agentgates balance. Its model is Agentgates inference."
+description: "Deploy OpenClaw subagents to their own cloud server: start another OpenClaw agent on a confidential virtual machine (CVM, a sealed Intel TDX VM) for agents that hold keys or money, or on a cheap plain VM for workers with nothing secret, one per agent, for trading swarms or any swarm, by the hour, paid in USDC from a prepaid Agentgates balance. Its model is Agentgates inference."
 metadata:
   openclaw:
     requires:
@@ -27,7 +27,8 @@ TDX) rented by the hour from Agentgates, with a remote-attestation quote. One
 machine per agent. You give it work over HTTPS, it answers, and its sessions
 and memory stay on that machine's encrypted disk. Use it for a swarm: trading
 agents that keep their keys and strategies sealed from the host, research or
-data workers, or any agent that should run apart from you.
+data workers, or any agent that should run apart from you. Workers with nothing
+secret on them can run on a plain VM for much less (below).
 
 The new agent runs OpenClaw's own release image (`compose.yml` in this skill,
 pinned by digest; OpenClaw is https://github.com/openclaw/openclaw). Its model
@@ -73,8 +74,39 @@ and given room its memory peaked at 2.07 GB, more than a 2 GB machine holds.
 On a Standard machine with `glm-5-3-flash` its answers took 8 to 58 seconds.
 
 `compose.yml` reads `OPENCLAW_GATEWAY_TOKEN`, `AGENTGATES_API_KEY` and
-`AGENTGATES_MODEL` from the new machine's sealed env, which `start` fills. Your
-own environment needs only the two keys above.
+`AGENTGATES_MODEL` from the new machine's sealed env, which `start` fills, and
+merges them into OpenClaw's own settings file at every boot, so a new model
+your owner sends with `POST /api/compute/deployments/{id}/update` takes effect
+at the restart it brings. Your own environment needs only the two keys above.
+
+## Cheap workers on plain VMs
+
+A worker with nothing secret on it, such as a scraper, a crawler or a bot that
+reads public data, can run on a plain VM for much less:
+
+```bash
+node {baseDir}/scripts/openclaw-machine.mjs price --plan compute.vm.standard
+node {baseDir}/scripts/openclaw-machine.mjs start --plan compute.vm.standard --name scraper-1 --max-usd 0.2
+```
+
+`compute.vm.standard` (2 vCPU, 4 GB) is the smallest plain plan OpenClaw runs
+on. A plain VM has its own IP address and any port, and no proof: its host can
+read its disk, its memory and its env, the gateway token and the inference key
+included. So keep wallet keys, exchange keys and private data on confidential
+machines, give plain workers public work only, and have them send their results
+back to you. The catalog marks a plain plan with `"proof": "none"`
+(`GET https://api.agentgates.ai/api/compute/catalog`). A plain plan sells while
+its host has room: when it has none, `price` and `start` say so and nothing is
+bought.
+
+A plain VM's https name is a proxy inside the machine, its certificate made
+there once the machine runs; `start` waits for it, and `ask` sends the token
+over https only. On a plain plan `start` also sends `OPENCLAW_TRUSTED_PROXIES`,
+the private range that proxy reaches OpenClaw from: OpenClaw refuses calls
+through a proxy it does not trust. In our run on `compute.vm.standard` OpenClaw
+answered on the machine 3 minutes 37 seconds after the purchase, its https name
+was live when we looked 9 minutes after it, and a task over that name took 21
+to 43 seconds.
 
 ## Give it work
 
@@ -90,9 +122,10 @@ Anyone holding that token is the machine's operator: never share it. The state
 file is its only copy, so back it up; if it is lost, your owner can seal a new
 token into the machine with `POST /api/compute/deployments/{id}/update`. Runs
 side by side are safe: each change to the file takes a lock. Before you send a
-machine secrets, check its proof page,
+confidential machine secrets, check its proof page,
 `https://api.agentgates.ai/compute/verify/<deploymentId>`: its compose hash, OS
-image hash and Intel TDX quote.
+image hash and Intel TDX quote. A plain VM has no proof page: send it no
+secrets.
 
 A new OpenClaw's first answer may end by asking what to call it. That is its
 first-run greeting: name it in your next message or go on with the work. Its
