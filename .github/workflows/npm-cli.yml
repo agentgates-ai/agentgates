@@ -9,6 +9,12 @@ name: Publish @agentgates/cli
 on:
   release:
     types: [published]
+  # A release whose publish failed is published again by its tag.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'The release to publish, like cli-v0.103.0'
+        required: true
 
 permissions:
   id-token: write # npm's trusted publishing
@@ -16,7 +22,7 @@ permissions:
 
 jobs:
   publish:
-    if: startsWith(github.event.release.tag_name, 'cli-v')
+    if: startsWith(github.event.release.tag_name || inputs.tag, 'cli-v')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/setup-node@v6
@@ -31,7 +37,7 @@ jobs:
       - name: The release's tarball, checked against its tag
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.event.release.tag_name }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
         run: |
           gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern 'agentgates-cli-*.tgz' --dir pkg
           test "$(ls pkg | wc -l)" -eq 1
@@ -40,7 +46,8 @@ jobs:
           test "cli-v$(node -p "require('./package/package.json').version")" = "$TAG"
           sha256sum pkg/*.tgz
 
+      # ./ makes it a file: npm reads a bare a/b.tgz as a GitHub repository.
       - name: Publish
         env:
           NPM_CONFIG_PROVENANCE: 'false'
-        run: npm publish pkg/*.tgz --access public
+        run: npm publish ./pkg/*.tgz --access public
